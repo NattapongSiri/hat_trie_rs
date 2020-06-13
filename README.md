@@ -42,3 +42,8 @@ for k in pf {
     assert_eq!(&key[..k.len()], k);
 }
 ```
+
+# Caveat
+Current implementation is closely similar to the one in research paper. In initialization of the `DenseVecTrieNode`, it pre-allocate memory at least equals to 2^bits of key element times size of `usize`. So in first example, it is 8 bits thus it pre-allocate memory about 2 ^ 8 * size of `usize` thus in 64 bits system, it took 1024 bytes + some overhead of `ahtable` and size of value. However, if your data is `u32`, the size of Unicode codepoint, you will requires at least 2 ^ 32 * size of `usize` thus 4,294,967,296 * size of `usize`. In 64 bits system, it is over 16GB for an empty `DenseVecTrieNode`.
+
+That is the reasons why in example code above, we encoded data into bytes before putting it in the trie. It can also be possible to encode data into `u16` in case your data is encoded in UTF-16. However, for simplicity of example, we use `u8`. This is because the default encoding that Rust use is UTF-8.
