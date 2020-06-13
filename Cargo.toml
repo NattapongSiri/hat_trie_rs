@@ -1,0 +1,17 @@
+[package]
+name = "hat_trie"
+description = "A hat-trie implementation that support prefix match iteration"
+categories = ["data-structures"]
+keywords = ["hat", "trie", "hat-trie", "hash", "prefix"]
+readme = "README.md"
+version = "0.1.0"
+license = "BSD-3-Clause"
+authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ahtable="^0.1"
+num-traits="^0.2"
+twox-hash="^1.5"
