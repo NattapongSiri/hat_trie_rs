@@ -150,7 +150,8 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(ref bucket) = self.bucket {
-            for i in (self.cursor + self.cur_len)..self.query.len() {
+            dbg!(self.cursor, self.cur_len, self.query.len());
+            for i in (self.cursor + self.cur_len)..=self.query.len() {
                 let cur_key = &self.query[self.cursor..i];
                 if let Some(v) = bucket.smart_get(cur_key) {
                     self.cur_len = i - self.cursor + 1;

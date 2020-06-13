@@ -278,8 +278,21 @@ fn test_prefix_empty() {
         dvtn.prefix(key).map(|(key, _)| {key}).collect()
     }
 
-    assert_eq!(lifetime_check(&[0u8, 1]).len(), 0);
     assert_eq!(lifetime_check(&[]), Vec::<&[u8]>::new());
+}
+#[test]
+fn test_prefix_exact_match() {
+    let key_1: &[u8] = &[1u8];
+    let key_2: &[u8] = &[1u8, 2, 3];
+    let key_3: &[u8] = &[1u8, 2, 3, 4];
+
+    let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
+    dvtn.put(key_1, 1u8);
+    dvtn.put(key_2, 2u8);
+    dvtn.put(key_3, 3u8);
+    let pf : Vec<&[u8]> = dvtn.prefix(&[1u8, 2, 3, 4]).map(|(key, _)| {key}).collect();
+
+    assert_eq!(pf, vec![key_1, key_2, key_3]);
 }
 
 #[test]
