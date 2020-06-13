@@ -267,6 +267,21 @@ fn test_prefix() {
     }
 }
 
+
+#[test]
+fn test_prefix_empty() {
+    fn lifetime_check<'a>(key: &'a [u8]) -> Vec<&'a [u8]> {
+        let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
+        dvtn.put(&[1u8], 1u8);
+        dvtn.put(&[1u8, 2, 3], 2u8);
+        dvtn.put(&[1u8, 2, 3, 4], 3u8);
+        dvtn.prefix(key).map(|(key, _)| {key}).collect()
+    }
+
+    assert_eq!(lifetime_check(&[0u8, 1]).len(), 0);
+    assert_eq!(lifetime_check(&[]), Vec::<&[u8]>::new());
+}
+
 #[test]
 fn test_layered_trie_prefix() {
     let mut keys: Vec<Box<[u8]>> = Vec::with_capacity(crate::htrie::BURST_THRESHOLD * 256 + 1);
