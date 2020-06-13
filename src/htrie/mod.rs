@@ -160,6 +160,8 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
 
             // It is impossible to find value in any other bucket because of the type of data structure
             return None
+        } else if self.query.len() == 0 {
+            return None
         } else {
             while self.bucket.is_none() {
                 match self.node.child(&self.query[self.cursor]) {
