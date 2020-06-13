@@ -10,7 +10,7 @@ Hat-trie is a cache conscious kind of trie. This crate implements a "Hybrid" hat
 # How to use
 As dictionary:
 ```rust
-use htrie::DenseVecTrieNode;
+use htrie::{DenseVecTrieNode, TrieNode};
 let mut dvtn = DenseVecTrieNode::new();
 assert!(dvtn.get("".as_bytes()).is_none());
 assert_eq!(dvtn.put("Yo".as_bytes(), 1), None);
@@ -20,8 +20,7 @@ assert_eq!(dvtn.get("Yes".as_bytes()), Some(&2));
 ```
 As prefix lookup data structure:
 ```rust
-fn lifetime_check<'a>(key: &'a [u8]) -> Vec<&'a [u8]> {
-}
+use htrie::{DenseVecTrieNode, TrieNode};
 
 let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
 dvtn.put(&[1u8], 1u8);
