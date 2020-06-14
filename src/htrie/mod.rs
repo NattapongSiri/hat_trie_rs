@@ -35,7 +35,9 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     /// This happen whenever burst or split threshold reach.
     /// It consume a given bucket and return a new Trie node which contains
     /// splitted bucket as childs.
-    fn new_split(bucket: ArrayHash<twox_hash::XxHash64, Box<[K]>, V>) -> Self;
+    /// 
+    /// The new trie node will have specified burst/split threshold.
+    fn new_split(bucket: ArrayHash<twox_hash::XxHash64, Box<[K]>, V>, threshold: usize) -> Self;
     /// Get a child node of given key from current node.
     fn child(&'_ self, key: &K) -> &'_ NodeType<K, Self, V>;
     /// Retrieve a value of current node.
@@ -52,10 +54,37 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     /// If key is already exist in this trie, it will return existing value to caller without
     /// any change to the trie.
     fn try_put<'a>(&'a mut self, key: &[K], value: V) -> Option<&'a V> where K: 'a;
+
+    /// Utilities function that help shortcut key lookup when
+    /// caller request key greater than max_key_len, it mean there's no such key
+    /// in this trie.
+    /// 
+    /// By default, it return MAX value of usize.
+    #[inline(always)]
+    fn max_key_len(&self) -> usize {
+        usize::MAX
+    }
+    /// Utilities function that help shortcut key lookup when
+    /// caller request key less than min_key_len, it mean there's no such key
+    /// in this trie.
+    /// 
+    /// By default, it return MIN value of usize.
+    #[inline(always)]
+    fn min_key_len(&self) -> usize {
+        usize::MIN
+    }
     
     /// Get a value from this trie associated with given key slice.
     fn get<'a>(&'a self, key: &[K]) -> Option<&'a V> where K: 'a {
-        if key.len() == 0 {return None} // Empty key won't exist in such trie
+        
+        // Key that is not part of this trie
+        match key.len() {
+            0 => return None,
+            x if x < self.min_key_len() => return None,
+            x if x > self.max_key_len() => return None,
+            _ => ()
+        } 
+
         let mut offset = 0; // Progress of key being process
         // let mut nodes = &self.child(key); // Set root childs as nodes to be search for a key
         let mut parent = self;
@@ -101,9 +130,10 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
             _phantom: core::marker::PhantomData,
             bucket: None,
             cursor: 0,
-            cur_len: 1,
+            cur_len: self.min_key_len(), // We shall reduce comparison by start at shortest key in this trie.
             node: self,
-            query: key
+            // We only need to check prefix up to longest key in this trie.
+            query: &key[..core::cmp::min(self.max_key_len(), key.len())] 
         }
     }
 
@@ -127,6 +157,9 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     }
 }
 
+/// An iterator that return prefix of given query.
+/// 
+/// This iterator also return an exact match to query. It doesn't guarantee order of return prefix.
 #[derive(Debug)]
 pub struct PrefixIterator<'a, 'b, K, T, V> 
 where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
@@ -134,7 +167,8 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
       T: 'a + TrieNode<K, V>,
       V: Clone {
     _phantom: core::marker::PhantomData<V>,
-    bucket: Option<&'a ahtable::ArrayHash<twox_hash::XxHash64, Box<[K]>, V>>,
+    bucket: Option<&'a ArrayHash<twox_hash::XxHash64, Box<[K]>, V>>,
+    // bucket: Option<ahtable::ArrayHashIterator<'a, Box<[K]>, V>>,
     cursor: usize,
     cur_len: usize,
     node: &'a T,
@@ -149,7 +183,7 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     type Item=(&'b[K], &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(ref bucket) = self.bucket {
+        if let Some(ref mut bucket) = self.bucket {
             for i in (self.cursor + self.cur_len)..=self.query.len() {
                 let cur_key = &self.query[self.cursor..i];
                 if let Some(v) = bucket.smart_get(cur_key) {
@@ -157,6 +191,15 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
                     return Some((&self.query[..i], v))
                 }
             }
+
+            // below code use iterative style to fetch for prefix
+
+            // while let Some((key, value)) = bucket.next() {
+            //     let bound = self.cursor + key.len();
+            //     if bound <= self.query.len() && &self.query[self.cursor..bound] == &**key {
+            //         return Some((&self.query[..bound], value))
+            //     }
+            // }
 
             // It is impossible to find value in any other bucket because of the type of data structure
             return None
@@ -178,14 +221,16 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
                     },
                     NodeType::Pure(ref bucket) => {
                         self.bucket = Some(bucket);
+                        // self.bucket = Some(bucket.iter());
                     },
                     NodeType::Hybrid((ref bucket, _)) => {
                         self.bucket = Some(bucket);
+                        // self.bucket = Some(bucket.iter());
                     }
                 }
             }
 
-            if let Some(ref bucket) = self.bucket {
+            if let Some(ref mut bucket) = self.bucket {
                 for i in (self.cursor + self.cur_len)..=self.query.len() {
                     let cur_key = &self.query[self.cursor..i];
                     if let Some(v) = bucket.smart_get(cur_key) {
@@ -193,9 +238,26 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
                         return Some((&self.query[..i], v))
                     }
                 }
+
+                // below code use iterative style to fetch for prefix
+
+                // while let Some((key, value)) = bucket.next() {
+                //     let bound = self.cursor + key.len();
+                //     if bound <= self.query.len() && &self.query[self.cursor..bound] == &**key {
+                //         return Some((&self.query[..bound], value))
+                //     }
+                // }
                 return None
             }
         }
         None
     }
+}
+
+impl<'a, 'b, K, T, V> core::iter::FusedIterator for PrefixIterator<'a, 'b, K, T, V> 
+where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
+      Box<[K]>: Clone + PartialEq,
+      T: 'a + TrieNode<K, V>,
+      V: Clone {
+
 }

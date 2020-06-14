@@ -26,8 +26,10 @@ where K: AsPrimitive<usize> + core::hash::Hash + FromPrimitive + Bounded + Parti
 
     let mut split_point = 0;
     let mut first_portion = 0;
+    let last_split_point = count.len() - 1;
 
-    while first_portion < split_portion {
+    // It shall not be split beyond end point
+    while first_portion < split_portion && split_point < last_split_point {
         first_portion += count[split_point];
         split_point += 1;
     }
@@ -54,11 +56,12 @@ where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
     /// Owned childs of a node. It need to be pre-allocated to prevent re-allocation which
     /// if happen, will invalidate all pointers that point to it.
     childs: Vec<NodeType<K, T, V>>,
+    threshold: usize,
     _internal_pointer: Box<[*mut NodeType<K, T, V>]>
 }
 
 impl<K, T, V> ChildsContainer<K, T, V> 
-where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Unsigned,
+where K: AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Unsigned,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
       V: Clone + Default {
@@ -68,11 +71,44 @@ where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + Fr
         let mut childs = Vec::with_capacity(size);
         let start = K::min_value().as_();
         let end = K::max_value().as_();
+
         let bucket = NodeType::Hybrid((ArrayHashBuilder::default().build(), K::from_usize(start).unwrap()..=K::from_usize(end).unwrap()));
         childs.push(bucket);
         let ptrs = (0..size).map(|_| (&mut childs[0]) as *mut NodeType<K, T, V>).collect();
         ChildsContainer {
             childs,
+            threshold: super::BURST_THRESHOLD,
+            _internal_pointer: ptrs
+        }
+    }
+    /// Construct an empty childs container with given specification.
+    /// It is initialize to Single "hybrid" node and all pointer in parent point to this single child.
+    /// 
+    /// # Parameters
+    /// `size` - Number of slot this container going to provide. These slots are for redirecting index
+    /// access to underlying childs which may be trie or `ArrayHash`
+    /// `threshold` - A maximum number of element before this container split it child.
+    /// `init_bucket_size` - Initial size of `ArrayHash` in container node.
+    /// `bucket_load_factor` - Number of elements per container before it scale.
+    /// Each container will scale by multiple of this value.
+    /// 
+    /// # Return
+    /// A container node with specified spec
+    pub fn with_spec(size: usize, threshold: usize, init_bucket_size: usize, init_bucket_slots: usize, bucket_load_factor: usize) -> Self {
+        let mut childs = Vec::with_capacity(size);
+        let start = K::min_value().as_();
+        let end = K::max_value().as_();
+        let bucket = NodeType::Hybrid((ArrayHashBuilder::default()
+                                                            .buckets_size(init_bucket_size)
+                                                            .slot_size(init_bucket_slots)
+                                                            .max_load_factor(bucket_load_factor)
+                                                            .build(), 
+                                        K::from_usize(start).unwrap()..=K::from_usize(end).unwrap()));
+        childs.push(bucket);
+        let ptrs = (0..size).map(|_| (&mut childs[0]) as *mut NodeType<K, T, V>).collect();
+        ChildsContainer {
+            childs,
+            threshold,
             _internal_pointer: ptrs
         }
     }
@@ -92,9 +128,10 @@ where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + Fr
         let mut pure_trie = None;
         // This is a result of hybrid node split.
         let mut split_result = None;
+        let threshold = self.threshold;
         match &mut self[key] {
             NodeType::Pure(bucket) => {
-                if bucket.len() >= super::BURST_THRESHOLD {
+                if bucket.len() >= threshold {
                     // flag that current key need to be burst/split
                     pure_trie = Some(key);
                 } else {
@@ -102,13 +139,13 @@ where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + Fr
                 }
             },
             NodeType::Hybrid((bucket, range)) => {
-                if bucket.len() >= super::BURST_THRESHOLD {
+                if bucket.len() >= threshold {
                     // Need to split
                     let start = range.start().as_();
                     let end = range.end().as_();
 
                     // Find split point
-                    let split_point = find_half_point(bucket, 0, start, end + 1);
+                    let split_point = find_half_point(bucket, 0, start, end);
                     // Now we got split point
 
                     // Make a new bucket to store half of old bucket
@@ -140,11 +177,11 @@ where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + Fr
             // Temporary take out child at K
             unsafe {
                 let old_child = std::mem::take(&mut *self._internal_pointer[k]);
-
+                
                 // It is only possible to be "Pure" node type to reach here
                 if let NodeType::Pure(bucket) = old_child {
                     // Consume bucket and make a trie out of it
-                    let trie = NodeType::Trie(T::new_split(bucket));
+                    let trie = NodeType::Trie(T::new_split(bucket, self.threshold));
                     // Place new child at K
                     std::mem::replace(&mut *self._internal_pointer[k], trie);
                 }
@@ -153,7 +190,7 @@ where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + Fr
         } else if let Some((new_bucket, [start, split_point, end])) = split_result {
             // Post processing for Hybrid split.
             // 1. change existing bucket to pure if needed. 2. update parent pointers for new bucket
-            if start == split_point {
+            if start == split_point - 1 {
                 // The only case where we need to make node Pure
                 let old = std::mem::take(&mut self[key]);
                 // The only possible type in here is Hybrid
@@ -174,7 +211,7 @@ where K: AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + Fr
 
             // Last element of self.childs hold a new bucket, we need to update all remain pointer
             let last = self.childs.len() - 1;
-
+            
             // Update all remaining pointer to point to new half
             for ptr in self._internal_pointer[split_point..].iter_mut() {
                 *ptr = (&mut self.childs[last]) as *mut NodeType<K, T, V>;
@@ -215,18 +252,21 @@ where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd + Unsign
 
 #[derive(Clone, Debug)]
 pub struct DenseVecTrieNode<K, V> 
-where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
+where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
       Box<[K]>: Clone + PartialEq,
       V: Clone + Default {
     childs: ChildsContainer<K, Self, V>,
+    max_len: usize,
+    min_len: usize,
+    threshold: usize,
     value: Option<V>,
 }
 
 impl<K, V> TrieNode<K, V> for DenseVecTrieNode<K, V> 
-where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
+where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
       Box<[K]>: Clone + PartialEq,
       V: Clone + Default {
-    fn new_split(mut bucket: ArrayHash<twox_hash::XxHash64, Box<[K]>, V>) -> Self {
+    fn new_split(mut bucket: ArrayHash<twox_hash::XxHash64, Box<[K]>, V>, threshold: usize) -> Self {
         let start = K::min_value().as_();
         let end = K::max_value().as_();
         let mut old_size = bucket.len();
@@ -234,14 +274,24 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
         let mut node_value = None;
         let mut left = ArrayHashBuilder::default().build();
         let mut right = ArrayHashBuilder::default().build();
+        let mut key_len = (usize::MAX, usize::MIN);
 
         for (key, value) in bucket.drain() {
-            if key.len() == 1 {
+            let n = key.len();
+            if n == 1 {
+                key_len = (1, 1);
                 // There's only single character in key.
                 // It value must be present on new Trie node and remove itself from bucket.
                 node_value = Some(value);
                 old_size -= 1;
                 continue;
+            } else {
+                if n > key_len.1 {
+                    key_len.1 = n;
+                }
+                if n < key_len.0 {
+                    key_len.0 = n;
+                }
             }
             if key[1] >= split_point {
                 assert!(right.put(key[1..].into(), value).is_none());
@@ -270,8 +320,12 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
         DenseVecTrieNode {
             childs: ChildsContainer {
                 childs,
+                threshold,
                 _internal_pointer: ptr
             },
+            min_len: key_len.0,
+            max_len: key_len.1,
+            threshold,
             value: node_value,
         }
     }
@@ -290,6 +344,14 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
 
     fn put(&mut self, key: &[K], value: V) -> Option<V> {
         if key.len() == 0 {return None} // Cannot put empty key into trie
+
+        if key.len() > self.max_len {
+            self.max_len = key.len();
+        }
+        if key.len() < self.min_len {
+            self.min_len = key.len();
+        }
+
         let mut offset = 0; // Progress of key being process
         // let mut nodes = &mut self.childs; // Set root childs as nodes to be search for a key
         let mut parent = self;
@@ -350,6 +412,16 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
 
     fn try_put<'a>(&'a mut self, key: &[K], value: V) -> Option<&'a V> where K: 'a {
         if key.len() == 0 {return None} // Cannot put empty key into trie
+
+        // It's safe to assume that if key len is new extreme, it's unique key.
+        // Therefore, it should be able to put into this node.
+        if key.len() > self.max_len {
+            self.max_len = key.len();
+        }
+        if key.len() < self.min_len {
+            self.min_len = key.len();
+        }
+
         let mut offset = 0; // Progress of key being process
         let mut parent = self;
         let mut nodes = &mut parent.childs; // Set root childs as nodes to be search for a key
@@ -407,19 +479,44 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
             offset += 1; // Move offset so next time key being use will be those that is not yet processed.
         }
     }
+
+    #[inline(always)]
+    fn max_key_len(&self) -> usize {
+        self.max_len
+    }
+
+    #[inline(always)]
+    fn min_key_len(&self) -> usize {
+        self.min_len
+    }
 }
 
 impl<K, V> DenseVecTrieNode<K, V> 
-where K: Copy + AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
+where K: Copy + AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
       Box<[K]>: Clone + PartialEq,
       V: Clone + Default {
 
     pub fn new() -> DenseVecTrieNode<K, V> {
         DenseVecTrieNode {
+            min_len: 0,
+            max_len: 0,
                 // root always has no value
             value: None,
+            threshold: super::BURST_THRESHOLD,
             // Allocate Trie with length equals to Trie size. Since K is not `Clone`, we need to manually create all of it.
             childs: ChildsContainer::new(2usize.pow(std::mem::size_of::<K>() as u32 * 8u32))
+        }
+    }
+
+    pub fn with_spec(threshold: usize, init_bucket_size: usize, init_bucket_slots: usize, bucket_load_factor: usize) -> DenseVecTrieNode<K, V> {
+        DenseVecTrieNode {
+            min_len: 0,
+            max_len: 0,
+                // root always has no value
+            value: None,
+            threshold,
+            // Allocate Trie with length equals to Trie size. Since K is not `Clone`, we need to manually create all of it.
+            childs: ChildsContainer::with_spec(2usize.pow(std::mem::size_of::<K>() as u32 * 8u32), threshold, init_bucket_size, init_bucket_slots, bucket_load_factor)
         }
     }
 }

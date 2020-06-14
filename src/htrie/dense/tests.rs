@@ -404,3 +404,32 @@ fn test_longest_prefix() {
     //     panic!("Cannot find longest prefix")
     // }
 }
+#[test]
+#[ignore]
+fn test_very_long_query() {
+    let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
+    dvtn.put(&[1u8], 1u8);
+    dvtn.put(&[1u8, 2, 3], 2u8);
+    dvtn.put(&[1u8, 2, 3, 4], 3u8);
+
+    let query: Vec<u8> = (1..10_000_000).map(|v| {(v % 8) as u8}).collect();
+    let pf: Vec<&[u8]> = dvtn.prefix(query.as_slice()).map(|(key, _)| key).collect();
+    let timer = std::time::Instant::now();
+    assert_eq!(pf.len(), 3);
+    dbg!(timer.elapsed().as_micros());
+}
+
+#[test]
+fn test_dvtn_spec() {
+    let mut dvtn: DenseVecTrieNode<u8, ()> = DenseVecTrieNode::with_spec(2, 4096, 4096, 16384);
+    let keys: &[&[u8]] = &[&[1u8], &[1u8, 2], &[0u8], &[3u8, 4]];
+    for key in keys {
+        dvtn.put(key, ());
+    }
+
+    for key in keys {
+        assert!(dvtn.get(key).is_some())
+    }
+
+    assert_eq!(dvtn.prefix(keys[1]).map(|(key, _)| key).collect::<Vec<&[u8]>>(), &keys[..2]);
+}
