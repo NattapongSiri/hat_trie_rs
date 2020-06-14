@@ -4,18 +4,25 @@ pub mod dense;
 
 const BURST_THRESHOLD: usize = 16384;
 
+/// All possible type of hat-trie node.
 #[derive(Clone, Debug)]
 pub enum NodeType<K, T, V> 
 where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
       Box<[K]>: Clone + PartialEq,
       T: TrieNode<K, V>,
       V: Clone {
+    /// Empty type. This is only used for temporary value replacement.
+    /// For example, when splitting node.
     None,
+    /// Sub layer of trie which is also an object of type trie.
     Trie(T),
+    /// Pure container type. It can have only one parent trie node.
     Pure(ArrayHash<twox_hash::XxHash64, Box<[K]>, V>),
+    /// Hybrid contaainer type. It can have more than one parent trie node.
     Hybrid((ArrayHash<twox_hash::XxHash64, Box<[K]>, V>, core::ops::RangeInclusive<K>))
 }
 
+/// Implement Default so that we can swap value out to perform node bursting/splitting.
 impl<K, T, V> Default for NodeType<K, T, V> 
 where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
       Box<[K]>: Clone + PartialEq,
@@ -26,6 +33,7 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
         }
 }
 
+/// A TrieNode operation where every implementation of Trie in this crate shall support.
 pub trait TrieNode<K, V> 
 where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
       Box<[K]>: Clone + PartialEq,
@@ -91,11 +99,12 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
         let mut node;
 
         loop {
-            // Dense Trie can use byte as index into each possible slot
-            node = parent.child(&key[offset]);
 
             if offset < key.len() {
                 // if there's some remain key to be process, we analyze child of current node
+                // Dense Trie can use byte as index into each possible slot
+                node = parent.child(&key[offset]);
+
                 match node {
                     NodeType::None => {
                         return None
@@ -184,6 +193,7 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(ref mut bucket) = self.bucket {
+            // Resume iterating over query and use smart_get method to find if such key exist
             for i in (self.cursor + self.cur_len)..=self.query.len() {
                 let cur_key = &self.query[self.cursor..i];
                 if let Some(v) = bucket.smart_get(cur_key) {
@@ -206,6 +216,8 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
         } else if self.query.len() == 0 {
             return None
         } else {
+            // Traverse the trie to find either a trie node with value or
+            // a container node which will require some other way to find a prefix.
             while self.bucket.is_none() {
                 match self.node.child(&self.query[self.cursor]) {
                     NodeType::None => {
@@ -230,6 +242,7 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
                 }
             }
 
+            // Mirror a code above to iterating on query element and use smart_get to find if key exist
             if let Some(ref mut bucket) = self.bucket {
                 for i in (self.cursor + self.cur_len)..=self.query.len() {
                     let cur_key = &self.query[self.cursor..i];

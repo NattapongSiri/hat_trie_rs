@@ -8,7 +8,7 @@ use num_traits::{bounds::Bounded, AsPrimitive, FromPrimitive, Unsigned};
 /// element of both key thus it found "b" and "c". When index is 2, it look at third element which is
 /// "c" and "d".
 fn find_half_point<K, V>(bucket: &ArrayHash<twox_hash::XxHash64, Box<[K]>, V>, index: usize, start: usize, end: usize) -> K 
-where K: AsPrimitive<usize> + core::hash::Hash + FromPrimitive + Bounded + PartialEq + PartialOrd + Unsigned,
+where K: AsPrimitive<usize> + core::fmt::Debug + core::hash::Hash + FromPrimitive + Bounded + PartialEq + PartialOrd + Unsigned,
         Box<[K]>: Clone + core::cmp::PartialEq, 
         V: Clone {
     // Find split point
@@ -39,7 +39,7 @@ where K: AsPrimitive<usize> + core::hash::Hash + FromPrimitive + Bounded + Parti
     K::from_usize(split_point).unwrap()
 }
 
-/// Construct a hat-trie hybrid container by using raw pointer to skip
+/// Construct a hat-trie hybrid container by using unsafe raw pointer to skip
 /// lookup time.
 /// This is possible for "dense" type only as each key element can be converted into
 /// usize to directly index into child node.
@@ -52,7 +52,7 @@ struct ChildsContainer<K, T, V>
 where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
-      V: Clone {
+      V: Clone + core::fmt::Debug {
     /// Owned childs of a node. It need to be pre-allocated to prevent re-allocation which
     /// if happen, will invalidate all pointers that point to it.
     childs: Vec<NodeType<K, T, V>>,
@@ -63,17 +63,17 @@ where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
 /// It should be safe to send this container between thread as it doesn't leak pointer out nor
 /// point to anything outside it own value which guarded by borrow checker of Rust
 unsafe impl<K, T, V> Send for ChildsContainer<K, T, V> 
-where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
+where K: AsPrimitive<usize> + core::fmt::Debug + core::hash::Hash + PartialEq + PartialOrd,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
-      V: Clone {
+      V: Clone + core::fmt::Debug {
 }
 
 impl<K, T, V> ChildsContainer<K, T, V> 
-where K: AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Unsigned,
+where K: AsPrimitive<usize> + core::fmt::Debug + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Unsigned,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
-      V: Clone + Default {
+      V: Clone + core::fmt::Debug + Default {
     /// Construct an empty childs container which initialize to Single "hybrid" node and
     /// all pointer in parent point to this single child.
     pub fn new(size: usize) -> Self {
@@ -201,7 +201,7 @@ where K: AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive + Parti
             // 1. change existing bucket to pure if needed. 2. update parent pointers for new bucket
             if start == split_point - 1 {
                 // The only case where we need to make node Pure
-                let old = std::mem::take(&mut self[key]);
+                let old = std::mem::take(&mut self[K::from_usize(start).unwrap()]);
                 // The only possible type in here is Hybrid
                 if let NodeType::Hybrid((table, _)) = old {
                     // Range can only be one here so we ignore it.
@@ -236,7 +236,7 @@ impl<K, T, V> core::ops::Index<K> for ChildsContainer<K, T, V>
 where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd + Unsigned,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
-      V: Clone {
+      V: Clone + core::fmt::Debug {
     type Output=NodeType<K, T, V>;
 
     fn index(&self, idx: K) -> &Self::Output {
@@ -250,7 +250,7 @@ impl<K, T, V> core::ops::IndexMut<K> for ChildsContainer<K, T, V>
 where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd + Unsigned,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
-      V: Clone {
+      V: Clone + core::fmt::Debug {
 
     fn index_mut(&mut self, idx: K) -> &mut Self::Output {
         unsafe {
@@ -259,11 +259,19 @@ where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd + Unsign
     }
 }
 
+/// A type of Trie that implemented by using Vec index as encoded key.
+/// 
+/// Care should be taken before using this Trie.
+/// 
+/// The memory requirement for this Trie is equals to bits of key. For example, if
+/// key is of type &[u8], each layer of Trie will need at least 2^8 * 4 bytes (1024 bytes) 
+/// + all other meta such as minimum and maximum length of stored key, threshold for burst/split, etc.
+/// If key is of type &[u32], each layer will need 2^32 * 4 bytes (16GB).
 #[derive(Clone, Debug)]
 pub struct DenseVecTrieNode<K, V> 
-where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
+where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
       Box<[K]>: Clone + PartialEq,
-      V: Clone + Default {
+      V: Clone + core::fmt::Debug + Default {
     childs: ChildsContainer<K, Self, V>,
     max_len: usize,
     min_len: usize,
@@ -272,9 +280,9 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive 
 }
 
 impl<K, V> TrieNode<K, V> for DenseVecTrieNode<K, V> 
-where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
+where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
       Box<[K]>: Clone + PartialEq,
-      V: Clone + Default {
+      V: Clone + core::fmt::Debug + Default {
     fn new_split(mut bucket: ArrayHash<twox_hash::XxHash64, Box<[K]>, V>, threshold: usize) -> Self {
         let start = K::min_value().as_();
         let end = K::max_value().as_();
@@ -303,29 +311,66 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive 
                 }
             }
             if key[1] >= split_point {
-                assert!(right.put(key[1..].into(), value).is_none());
+                debug_assert!(right.put(key[1..].into(), value).is_none());
             } else {
-                assert!(left.put(key[1..].into(), value).is_none());
+                debug_assert!(left.put(key[1..].into(), value).is_none());
             }
         }
-        assert_eq!(old_size, left.len() + right.len());
+        debug_assert_eq!(old_size, left.len() + right.len());
 
         // Construct a child container manually as we need to properly align each
         // K with correct side of bucket.
         // In future, if other struct also need this, we shall move this to ChildsContainer struct
-        let mut childs = vec![
-            NodeType::Hybrid((left, K::from_usize(start).unwrap()..=K::from_usize(split_point.as_() - 1).unwrap())), 
-            NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())) ];
 
+        // We need to allocate enough space for childs mapping to prevent re-allocation which will invalidate
+        // all pointers below
+        let mut childs = Vec::with_capacity(end - start + 1);
         let split_point_usize = split_point.as_();
-        let ptr = (start..=end).map(|key| {
-            if key >= split_point_usize {
-                (&mut childs[1]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
-            } else {
-                (&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
-            }
-        }).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice();
         
+        let ptr = if split_point_usize == start {
+            // Only one side available
+            childs.push(NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())));
+
+            (start..=end).map(|_| {
+                (&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
+            }).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice()
+        } else if split_point_usize == start + 1 {
+            // Splitted into left and right. Left is pure. Right is hybrid
+            childs.push(NodeType::Pure(left));
+            childs.push(NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())));
+
+            std::iter::once((&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>)
+                        .chain((1..=end).map(|_| {
+                            (&mut childs[1]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
+                        })).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice()
+        } else if split_point_usize < end - 1 {
+            // Splitted into left and right, both hybrid
+            childs.push(NodeType::Hybrid((left, K::from_usize(start).unwrap()..=K::from_usize(split_point_usize - 1).unwrap())));
+            childs.push(NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())));
+
+            let split_point_usize = split_point.as_();
+            (start..=end).map(|key| {
+                if key >= split_point_usize {
+                    (&mut childs[1]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
+                } else {
+                    (&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
+                }
+            }).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice()
+        } else {
+            // Splitted into left and right. Left is hybrid. Right is pure
+            childs.push(NodeType::Hybrid((left, K::from_usize(start).unwrap()..=K::from_usize(split_point_usize - 1).unwrap())));
+            childs.push(NodeType::Pure(right));
+
+            let split_point_usize = split_point.as_();
+            (start..=end).map(|key| {
+                if key >= split_point_usize {
+                    (&mut childs[1]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
+                } else {
+                    (&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
+                }
+            }).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice()
+        };
+
         DenseVecTrieNode {
             childs: ChildsContainer {
                 childs,
@@ -392,7 +437,6 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive 
                         return parent.value.replace(value)
                     }
                     nodes = &mut parent.childs;
-                    nodes.maybe_split(key[offset]);
                 },
                 NodeType::Pure(childs) => {
                     // For Pure type, it's `ArrayHash` that contains whole remaining key.
@@ -501,10 +545,15 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::hash::Hash + FromPrimitive 
 }
 
 impl<K, V> DenseVecTrieNode<K, V> 
-where K: Copy + AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
+where K: Copy + AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Sized + Unsigned,
       Box<[K]>: Clone + PartialEq,
-      V: Clone + Default {
+      V: Clone + core::fmt::Debug + Default {
 
+    /// Create new empty [DenseVecTrieNode](struct.DenseVecTrieNode.html).
+    /// 
+    /// It will automatically expand into larger trie by append necesseary child type to
+    /// maintain it fitness. This method return default configuration for the 
+    /// [DenseVecTrieNode](struct.DenseVecTrieNode.html).
     pub fn new() -> DenseVecTrieNode<K, V> {
         DenseVecTrieNode {
             min_len: 0,
@@ -517,6 +566,25 @@ where K: Copy + AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive 
         }
     }
 
+    /// Create new empty [DenseVecTrieNode](struct.DenseVecTrieNode.html).
+    /// 
+    /// It will automatically expand into larger trie by append necesseary child type to
+    /// maintain it fitness. This method take specifications which this trie should maintain in order
+    /// to fit with expected performance.
+    /// 
+    /// # Parameters
+    /// `threshold` - The number of element in each leaf container which if exceed will cause node
+    /// burst/split depending on type of node at that moment.
+    /// `init_bucket_size` - The initial size of bucket. Bucket is a container used in leaf node.
+    /// This number shall be large enough to have only few data in each slot in bucket but it shall
+    /// also be small enough to fit into single page of memory for caching reason.
+    /// `init_bucket_slots` - The initial size of each slot which will store actual data. It will grow if
+    /// there is a lot of hash collision.
+    /// `bucket_load_factor` - The number of element in bucket which if reached, will expand the bucket size
+    /// by 2 times of current size.
+    /// 
+    /// # Return
+    /// A trie instance of type [DenseVecTrieNode](struct.DenseVecTrieNode.html)
     pub fn with_spec(threshold: usize, init_bucket_size: usize, init_bucket_slots: usize, bucket_load_factor: usize) -> DenseVecTrieNode<K, V> {
         DenseVecTrieNode {
             min_len: 0,

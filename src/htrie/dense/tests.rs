@@ -420,16 +420,49 @@ fn test_very_long_query() {
 }
 
 #[test]
-fn test_dvtn_spec() {
-    let mut dvtn: DenseVecTrieNode<u8, ()> = DenseVecTrieNode::with_spec(2, 4096, 4096, 16384);
-    let keys: &[&[u8]] = &[&[1u8], &[1u8, 2], &[0u8], &[3u8, 4]];
-    for key in keys {
-        dvtn.put(key, ());
+fn test_deep_split_spec() {
+    let mut dvtn: DenseVecTrieNode<u8, ()> = DenseVecTrieNode::with_spec(2, 512, 4096, 16384);
+    
+    let mut keys: Vec<Box<[u8]>> = Vec::with_capacity(crate::htrie::BURST_THRESHOLD * 256 + 1);
+    // The simplest way to have hybrid to split into two pure half is to repeatly add the node
+    // where prefix range from 0-255 and each of it has size equals to half of threshold...
+    // It gonna take a while as it require about 4 million entry
+    for pref in 0u8..=255 {
+        // Create all possible prefix[0] of key so that in the end, we will get all pure node
+        for i in 1..=(crate::htrie::BURST_THRESHOLD / 2 + 1) {
+            let mut key = vec![pref];
+            let mut j = i;
+            while j > 0 { // Add element until it is unique
+                key.push((j % 8) as u8);
+                j /= 8;
+            }
+            keys.push(key.into_boxed_slice());
+        }
     }
 
-    for key in keys {
-        assert!(dvtn.get(key).is_some())
+    // Attempt to put all entry into trie. The last element shall trigger a split from hybrid into two pure.
+    for i in 0..keys.len() {
+        dvtn.put(&*keys[i], ());
     }
 
-    assert_eq!(dvtn.prefix(keys[1]).map(|(key, _)| key).collect::<Vec<&[u8]>>(), &keys[..2]);
+    // Retrieve back all the key to verify integrity of trie
+    for i in 0..keys.len() {
+        if let Some(value) = dvtn.get(&*keys[i]) {
+            assert_eq!(*value, ());
+        } else {
+            panic!("Key {:?} is missing from trie", &*keys[i]);
+        }
+    }
+
+    let test_key = keys.len() - 1;
+    // Build expected prefix by using trie get to cross validate with prefix
+    let mut exp_pref : Vec<&[u8]> = (1..keys[test_key].len()).filter_map(|len| {
+        if dvtn.get(&keys[test_key][..len]).is_some() {
+            Some(&keys[test_key][..len])
+        } else {
+            None
+        }
+    }).collect();
+    exp_pref.push(&keys[test_key]); // Because prefix also match it own self.
+    assert_eq!(dvtn.prefix(&keys[test_key]).map(|(k, _)| k).collect::<Vec<&[u8]>>(), exp_pref);
 }
