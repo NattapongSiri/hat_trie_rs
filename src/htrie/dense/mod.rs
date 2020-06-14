@@ -60,6 +60,15 @@ where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
     _internal_pointer: Box<[*mut NodeType<K, T, V>]>
 }
 
+/// It should be safe to send this container between thread as it doesn't leak pointer out nor
+/// point to anything outside it own value which guarded by borrow checker of Rust
+unsafe impl<K, T, V> Send for ChildsContainer<K, T, V> 
+where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
+      Box<[K]>: Clone + core::cmp::PartialEq, 
+      T: Clone + TrieNode<K, V>,
+      V: Clone {
+}
+
 impl<K, T, V> ChildsContainer<K, T, V> 
 where K: AsPrimitive<usize> + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Unsigned,
       Box<[K]>: Clone + core::cmp::PartialEq, 
