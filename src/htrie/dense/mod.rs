@@ -94,11 +94,11 @@ where K: AsPrimitive<usize> + core::fmt::Debug + Bounded + core::hash::Hash + Fr
     /// It is initialize to Single "hybrid" node and all pointer in parent point to this single child.
     /// 
     /// # Parameters
-    /// `size` - Number of slot this container going to provide. These slots are for redirecting index
+    /// - `size` - Number of slot this container going to provide. These slots are for redirecting index
     /// access to underlying childs which may be trie or `ArrayHash`
-    /// `threshold` - A maximum number of element before this container split it child.
-    /// `init_bucket_size` - Initial size of `ArrayHash` in container node.
-    /// `bucket_load_factor` - Number of elements per container before it scale.
+    /// - `threshold` - A maximum number of element before this container split it child.
+    /// - `init_bucket_size` - Initial size of `ArrayHash` in container node.
+    /// - `bucket_load_factor` - Number of elements per container before it scale.
     /// Each container will scale by multiple of this value.
     /// 
     /// # Return
@@ -311,9 +311,11 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
                 }
             }
             if key[1] >= split_point {
-                debug_assert!(right.put(key[1..].into(), value).is_none());
+                let r = right.put(key[1..].into(), value);
+                debug_assert!(r.is_none());
             } else {
-                debug_assert!(left.put(key[1..].into(), value).is_none());
+                let l = left.put(key[1..].into(), value);
+                debug_assert!(l.is_none());
             }
         }
         debug_assert_eq!(old_size, left.len() + right.len());
@@ -573,14 +575,14 @@ where K: Copy + AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Ha
     /// to fit with expected performance.
     /// 
     /// # Parameters
-    /// `threshold` - The number of element in each leaf container which if exceed will cause node
+    /// - `threshold` - The number of element in each leaf container which if exceed will cause node
     /// burst/split depending on type of node at that moment.
-    /// `init_bucket_size` - The initial size of bucket. Bucket is a container used in leaf node.
+    /// - `init_bucket_size` - The initial size of bucket. Bucket is a container used in leaf node.
     /// This number shall be large enough to have only few data in each slot in bucket but it shall
     /// also be small enough to fit into single page of memory for caching reason.
-    /// `init_bucket_slots` - The initial size of each slot which will store actual data. It will grow if
+    /// - `init_bucket_slots` - The initial size of each slot which will store actual data. It will grow if
     /// there is a lot of hash collision.
-    /// `bucket_load_factor` - The number of element in bucket which if reached, will expand the bucket size
+    /// - `bucket_load_factor` - The number of element in bucket which if reached, will expand the bucket size
     /// by 2 times of current size.
     /// 
     /// # Return
