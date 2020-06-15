@@ -148,21 +148,46 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
 
     /// Find a longest prefix from given key from this Trie.
     /// 
-    /// This is a utility function that perform exactly like you iterate on method 
-    /// [prefix](struct.TrieNode.html#method.prefix) to find a longest prefix by yourself.
+    /// It traverse the trie until either it reach container node or key is depleted.
+    /// If it reaches container type first, it will start attempt to get the remain of key
+    /// from the bucket and keep shrinking key until it found value.
+    /// If the key is depleted first, it check if last traversed node has value.
+    /// 
+    /// # Parameter
+    /// `key` - A key to look for longest prefix with this trie.
+    /// 
+    /// # Return
+    /// It return `Some((key_prefix, &value))` where `key_prefix` is the longest prefix found.
+    /// It return `None` if there's no prefix found.
     fn longest_prefix<'a, 'b>(&'a self, key: &'b [K]) -> Option<(&'b[K], &'a V)> where K: 'a {
-        let mut longest: Option<(&[K], &V)> = None;
-        self.prefix(key).for_each(|(key, value)| {
-            if let Some((k, _)) = longest {
-                if key.len() > k.len() {
-                    longest = Some((key, value));
-                }
-            } else {
-                longest = Some((key, value));
-            }
-        });
+        if key.len() == 0 {return None}
+        let mut node = self;
+        let mut i = 0;
+        let mut end = core::cmp::min(key.len(), self.max_key_len());
+        while i < end {
+            match node.child(&key[i]) {
+                NodeType::None => return None,
+                NodeType::Trie(t) => {
+                    node = t;
+                    i += 1;
+                },
+                NodeType::Hybrid((bucket, _)) | NodeType::Pure(bucket) => {
+                    while end > i {
+                        if let Some(v) = bucket.smart_get(&key[i..end]) {
+                            return Some((&key[..end], v))
+                        }
+                        end -= 1;
+                    }
 
-        longest
+                    return None
+                }
+            }
+        }
+        if let Some(v) = node.value() {
+            Some((&key[..i], v))
+        } else {
+            None
+        }
     }
 }
 

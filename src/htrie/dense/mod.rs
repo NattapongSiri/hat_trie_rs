@@ -331,7 +331,7 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
         
         let ptr = if split_point_usize == start {
             // Only one side available
-            childs.push(NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())));
+            childs.push(NodeType::Hybrid((right, split_point..=K::max_value())));
 
             (start..=end).map(|_| {
                 (&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>
@@ -339,7 +339,7 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
         } else if split_point_usize == start + 1 {
             // Splitted into left and right. Left is pure. Right is hybrid
             childs.push(NodeType::Pure(left));
-            childs.push(NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())));
+            childs.push(NodeType::Hybrid((right, split_point..=K::max_value())));
 
             std::iter::once((&mut childs[0]) as *mut NodeType<K, DenseVecTrieNode<K, V>, V>)
                         .chain((1..=end).map(|_| {
@@ -347,7 +347,7 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
                         })).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice()
         } else if split_point_usize < end - 1 {
             // Splitted into left and right, both hybrid
-            childs.push(NodeType::Hybrid((left, K::from_usize(start).unwrap()..=K::from_usize(split_point_usize - 1).unwrap())));
+            childs.push(NodeType::Hybrid((left, K::min_value()..=K::from_usize(split_point_usize - 1).unwrap())));
             childs.push(NodeType::Hybrid((right, split_point..=K::from_usize(end).unwrap())));
 
             let split_point_usize = split_point.as_();
@@ -360,7 +360,7 @@ where K: AsPrimitive<usize> + Bounded + Copy + core::fmt::Debug + core::hash::Ha
             }).collect::<Vec<*mut NodeType<K, DenseVecTrieNode<K, V>, V>>>().into_boxed_slice()
         } else {
             // Splitted into left and right. Left is hybrid. Right is pure
-            childs.push(NodeType::Hybrid((left, K::from_usize(start).unwrap()..=K::from_usize(split_point_usize - 1).unwrap())));
+            childs.push(NodeType::Hybrid((left, K::min_value()..=K::from_usize(split_point_usize - 1).unwrap())));
             childs.push(NodeType::Pure(right));
 
             let split_point_usize = split_point.as_();
