@@ -63,8 +63,8 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     /// any change to the trie.
     fn try_put<'a>(&'a mut self, key: &[K], value: V) -> Option<&'a V> where K: 'a;
 
-    /// Utilities function that help shortcut key lookup when
-    /// caller request key greater than max_key_len, it mean there's no such key
+    /// Utilities function that help reduce key lookup time when
+    /// caller request key with length greater than max_key_len, it mean there's no such key
     /// in this trie.
     /// 
     /// By default, it return MAX value of usize.
@@ -72,8 +72,8 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     fn max_key_len(&self) -> usize {
         usize::MAX
     }
-    /// Utilities function that help shortcut key lookup when
-    /// caller request key less than min_key_len, it mean there's no such key
+    /// Utilities function that help reduce key lookup time when
+    /// caller request key with length less than min_key_len, it mean there's no such key
     /// in this trie.
     /// 
     /// By default, it return MIN value of usize.
@@ -136,7 +136,7 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
     /// access tuple of prefix slice and value of node in this trie.
     fn prefix<'a, 'b>(&'a self, key: &'b [K]) -> PrefixIterator<'a, 'b, K, Self, V> {
         PrefixIterator {
-            _phantom: core::marker::PhantomData,
+            // _phantom: core::marker::PhantomData,
             bucket: None,
             cursor: 0,
             cur_len: self.min_key_len(), // We shall reduce comparison by start at shortest key in this trie.
@@ -200,7 +200,7 @@ where K: Copy + core::hash::Hash + PartialEq + PartialOrd + Sized,
       Box<[K]>: Clone + PartialEq,
       T: 'a + TrieNode<K, V>,
       V: Clone {
-    _phantom: core::marker::PhantomData<V>,
+    // _phantom: core::marker::PhantomData<V>,
     bucket: Option<&'a ArrayHash<twox_hash::XxHash64, Box<[K]>, V>>,
     // bucket: Option<ahtable::ArrayHashIterator<'a, Box<[K]>, V>>,
     cursor: usize,

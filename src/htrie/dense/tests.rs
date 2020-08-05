@@ -422,6 +422,8 @@ fn test_very_long_query() {
 #[test]
 fn test_deep_split_spec() {
     let mut dvtn: DenseVecTrieNode<u8, ()> = DenseVecTrieNode::with_spec(2, 512, 4096, 16384);
+    // let starts_with_query = &[255u8];
+    // let mut expected_starts_with = Vec::new();
     
     let mut keys: Vec<Box<[u8]>> = Vec::with_capacity(crate::htrie::BURST_THRESHOLD * 256 + 1);
     // The simplest way to have hybrid to split into two pure half is to repeatly add the node
@@ -436,11 +438,14 @@ fn test_deep_split_spec() {
                 key.push((j % 8) as u8);
                 j /= 8;
             }
+            // if pref == 255 {
+            //     expected_starts_with.push(key.clone().into_boxed_slice());
+            // }
             keys.push(key.into_boxed_slice());
         }
     }
 
-    // Attempt to put all entry into trie. The last element shall trigger a split from hybrid into two pure.
+    // Attempt to put all entry into trie. 
     for i in 0..keys.len() {
         dvtn.put(&*keys[i], ());
     }
@@ -465,4 +470,29 @@ fn test_deep_split_spec() {
     }).collect();
     exp_pref.push(&keys[test_key]); // Because prefix also match it own self.
     assert_eq!(dvtn.prefix(&keys[test_key]).map(|(k, _)| k).collect::<Vec<&[u8]>>(), exp_pref);
+
+    // // test starts_with on deep trie
+    // expected_starts_with.sort();
+    // let mut starts : Vec<&[u8]> = dvtn.starts_with(starts_with_query).map(|(key, _)| {key}).collect();
+    // starts.sort();
+    // assert_eq!(starts.len(), expected_starts_with.len());
+    // starts.into_iter().zip(expected_starts_with.into_iter()).for_each(|(k, e)| {
+    //     assert_eq!(k, &*e);
+    // });
 }
+// #[test]
+// fn test_starts_with() {
+//     use super::StartsWith;
+//     let query = &[1u8, 2];
+//     let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
+//     dvtn.put(&[1u8], 1u8);
+//     dvtn.put(&[1u8, 2, 3], 2u8);
+//     dvtn.put(&[1u8, 2, 3, 4], 3u8);
+//     dvtn.put(&[1u8, 0, 3, 4], 4u8);
+//     dvtn.put(&[0u8, 2, 3, 4], 5u8);
+//     let mut result: Vec<(&[u8], &u8)> = dvtn.starts_with(query).collect();
+//     result.sort_by(|(key1, _), (key2, _)| {key1.cmp(key2)});
+//     let expected: &[(&[u8], &u8)] = &[(&[1u8, 2, 3], &2u8), (&[1u8, 2, 3, 4], &3u8)];
+    
+//     assert_eq!(result, expected);
+// }

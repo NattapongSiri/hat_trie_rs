@@ -63,11 +63,19 @@ where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd,
 /// It should be safe to send this container between thread as it doesn't leak pointer out nor
 /// point to anything outside it own value which guarded by borrow checker of Rust
 unsafe impl<K, T, V> Send for ChildsContainer<K, T, V> 
-where K: AsPrimitive<usize> + core::fmt::Debug + core::hash::Hash + PartialEq + PartialOrd,
+where K: AsPrimitive<usize> + core::fmt::Debug + core::hash::Hash + PartialEq + PartialOrd + Send,
       Box<[K]>: Clone + core::cmp::PartialEq, 
       T: Clone + TrieNode<K, V>,
-      V: Clone + core::fmt::Debug {
+      V: Clone + core::fmt::Debug + Send {
 }
+
+/// Type have no use of any interior mutability nor any ref count type so it'd be safe
+/// to sync
+unsafe impl<K, T, V> Sync for ChildsContainer<K, T, V> 
+where K: AsPrimitive<usize> + core::hash::Hash + PartialEq + PartialOrd + Unsigned + Sync,
+      Box<[K]>: Clone + core::cmp::PartialEq, 
+      T: Clone + TrieNode<K, V>,
+      V: Clone + core::fmt::Debug + Sync {}
 
 impl<K, T, V> ChildsContainer<K, T, V> 
 where K: AsPrimitive<usize> + core::fmt::Debug + Bounded + core::hash::Hash + FromPrimitive + PartialEq + PartialOrd + Unsigned,
@@ -96,14 +104,16 @@ where K: AsPrimitive<usize> + core::fmt::Debug + Bounded + core::hash::Hash + Fr
     /// # Parameters
     /// - `size` - Number of slot this container going to provide. These slots are for redirecting index
     /// access to underlying childs which may be trie or `ArrayHash`
-    /// - `threshold` - A maximum number of element before this container split it child.
-    /// - `init_bucket_size` - Initial size of `ArrayHash` in container node.
+    /// - `threshold` - A maximum number of element before this container split it child. It must be greater thaan 0.
+    /// - `init_bucket_size` - Initial size of `ArrayHash` in container node. It must be greater than 0.
     /// - `bucket_load_factor` - Number of elements per container before it scale.
     /// Each container will scale by multiple of this value.
     /// 
     /// # Return
     /// A container node with specified spec
     pub fn with_spec(size: usize, threshold: usize, init_bucket_size: usize, init_bucket_slots: usize, bucket_load_factor: usize) -> Self {
+        debug_assert!(threshold > 0);
+        debug_assert!(init_bucket_size > 0);
         let mut childs = Vec::with_capacity(size);
         let start = K::min_value().as_();
         let end = K::max_value().as_();
@@ -121,7 +131,6 @@ where K: AsPrimitive<usize> + core::fmt::Debug + Bounded + core::hash::Hash + Fr
             _internal_pointer: ptrs
         }
     }
-    
     /// Attempt to split a child node at given key.
     /// 
     /// If the child node have element >= threshold, it will
@@ -576,10 +585,11 @@ where K: Copy + AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Ha
     /// 
     /// # Parameters
     /// - `threshold` - The number of element in each leaf container which if exceed will cause node
-    /// burst/split depending on type of node at that moment.
+    /// burst/split depending on type of node at that moment. It must be greater than 0.
     /// - `init_bucket_size` - The initial size of bucket. Bucket is a container used in leaf node.
     /// This number shall be large enough to have only few data in each slot in bucket but it shall
     /// also be small enough to fit into single page of memory for caching reason.
+    /// This value must be greater than 0.
     /// - `init_bucket_slots` - The initial size of each slot which will store actual data. It will grow if
     /// there is a lot of hash collision.
     /// - `bucket_load_factor` - The number of element in bucket which if reached, will expand the bucket size
@@ -588,6 +598,8 @@ where K: Copy + AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Ha
     /// # Return
     /// A trie instance of type [DenseVecTrieNode](struct.DenseVecTrieNode.html)
     pub fn with_spec(threshold: usize, init_bucket_size: usize, init_bucket_slots: usize, bucket_load_factor: usize) -> DenseVecTrieNode<K, V> {
+        debug_assert!(threshold > 0);
+        debug_assert!(init_bucket_size > 0);
         DenseVecTrieNode {
             min_len: 0,
             max_len: 0,
@@ -599,6 +611,5 @@ where K: Copy + AsPrimitive<usize> + Bounded + core::fmt::Debug + core::hash::Ha
         }
     }
 }
-
 #[cfg(test)]
 mod tests;

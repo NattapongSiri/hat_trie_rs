@@ -5,7 +5,7 @@ Some part of codes are inspired by [hat-trie](https://github.com/dcjones/hat-tri
 A good introduction to Hat-trie can be found [here](https://github.com/Tessil/hat-trie).
 
 ## Short description
-Hat-trie is a cache conscious kind of trie. This crate implements a "Hybrid" hat-trie. It consumes lesser storage that pure "Hashtable" as many common prefix will be extracted to common node of trie but this happen only if number of entry is large enough thus for small number of entry, it's virtually a "Hashtable" whereas a large number of entry, it's a mixture between "Hashtable" and trie.
+Hat-trie is a cache conscious kind of trie. This crate implements a "Hybrid" hat-trie. It consumes lesser storage than pure "Hashtable" as many common prefix will be extracted to common node of trie but this happen only if number of entry is large enough thus for small number of entry, it's virtually a "Hashtable" whereas a large number of entry, it's a mixture between "Hashtable" and trie.
 
 # How to use
 As dictionary:
