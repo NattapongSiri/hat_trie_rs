@@ -1,3 +1,4 @@
 mod htrie;
+mod prelude;
 
-pub use crate::htrie::{TrieNode, dense::DenseVecTrieNode, PrefixIterator};
+pub use crate::htrie::{TrieKey, TrieNode, dense::DenseVecTrieNode, PrefixIterator};

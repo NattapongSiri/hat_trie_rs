@@ -13,33 +13,33 @@ fn string_dense_trie() {
 
 #[test]
 fn i16_dense_trie() {
-    let mut dvtn: DenseVecTrieNode<u16, usize> = DenseVecTrieNode::new();
+    let mut dvtn: DenseVecTrieNode<[u16], u8> = DenseVecTrieNode::new();
     assert!(dvtn.get(&[1u16, 2]).is_none());
-    assert_eq!(dvtn.put(&[1, 2], 1), None);
+    assert_eq!(dvtn.put([1, 2].as_ref(), 1), None);
     assert_eq!(dvtn.get(&[1, 2]), Some(&1));
-    assert_eq!(dvtn.put(&[1, 2, 3], 2), None);
+    assert_eq!(dvtn.put([1, 2, 3].as_ref(), 2), None);
     assert_eq!(dvtn.get(&[1, 2, 3]), Some(&2));
-    assert_eq!(dvtn.put(&[2, 2, 3], 3), None);
+    assert_eq!(dvtn.put([2, 2, 3].as_ref(), 3), None);
     assert_eq!(dvtn.get(&[2, 2, 3]), Some(&3));
 }
 
 #[test]
 fn test_find_half() {
     let mut ah = ArrayHashBuilder::default().build();
-    let mut keys : Vec<Box<[u8]>> = Vec::with_capacity(1000);
+    let mut keys : Vec<Vec<u8>> = Vec::with_capacity(1000);
     for i in 0u8..10 {
         for j in 0u8..12 {
             for k in 0u8..14 {
-                keys.push(Box::new([i, j, k]));
+                keys.push(vec![i, j, k]);
             }
         }
     }
     for (i, k) in keys.iter().enumerate() {
         ah.put(k.clone(), i);
     }
-    assert_eq!(5, find_half_point(&ah, 0, 0, 10));
-    assert_eq!(6, find_half_point(&ah, 1, 0, 12));
-    assert_eq!(7, find_half_point(&ah, 2, 0, 14));
+    assert_eq!(5, find_half_point::<[u8], usize>(&ah, 0, 0, 10));
+    assert_eq!(6, find_half_point::<[u8], usize>(&ah, 1, 0, 12));
+    assert_eq!(7, find_half_point::<[u8], usize>(&ah, 2, 0, 14));
 }
 
 #[test]
@@ -245,10 +245,10 @@ fn test_pure_2_hybrid_split() {
 #[test]
 fn test_prefix() {
     fn lifetime_check<'a>(key: &'a [u8]) -> Vec<&'a [u8]> {
-        let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
-        dvtn.put(&[1u8], 1u8);
-        dvtn.put(&[1u8, 2, 3], 2u8);
-        dvtn.put(&[1u8, 2, 3, 4], 3u8);
+        let mut dvtn: DenseVecTrieNode<[u8], u8> = DenseVecTrieNode::new();
+        dvtn.put([1u8].as_ref(), 1u8);
+        dvtn.put([1u8, 2, 3].as_ref(), 2u8);
+        dvtn.put([1u8, 2, 3, 4].as_ref(), 3u8);
         dvtn.prefix(key).map(|(key, _)| {key}).collect()
     }
 
@@ -271,10 +271,10 @@ fn test_prefix() {
 #[test]
 fn test_prefix_empty() {
     fn lifetime_check<'a>(key: &'a [u8]) -> Vec<&'a [u8]> {
-        let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
-        dvtn.put(&[1u8], 1u8);
-        dvtn.put(&[1u8, 2, 3], 2u8);
-        dvtn.put(&[1u8, 2, 3, 4], 3u8);
+        let mut dvtn: DenseVecTrieNode<[u8], u8> = DenseVecTrieNode::new();
+        dvtn.put([1u8].as_ref(), 1u8);
+        dvtn.put([1u8, 2, 3].as_ref(), 2u8);
+        dvtn.put([1u8, 2, 3, 4].as_ref(), 3u8);
         dvtn.prefix(key).map(|(key, _)| {key}).collect()
     }
 
@@ -286,7 +286,7 @@ fn test_multi_prefix_with_exact_match() {
     let key_2: &[u8] = &[1u8, 2, 3];
     let key_3: &[u8] = &[1u8, 2, 3, 4];
 
-    let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
+    let mut dvtn: DenseVecTrieNode<[u8], u8> = DenseVecTrieNode::new();
     dvtn.put(key_1, 1u8);
     dvtn.put(key_2, 2u8);
     dvtn.put(key_3, 3u8);
@@ -300,7 +300,7 @@ fn test_prefix_by_exact_match_str() {
     let key_2: &[u8] = "กรรมกร".as_bytes();
     let key_3: &[u8] = "กรณ์".as_bytes();
 
-    let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
+    let mut dvtn: DenseVecTrieNode<[u8], u8> = DenseVecTrieNode::new();
     dvtn.put(key_1, 1u8);
     dvtn.put(key_2, 2u8);
     dvtn.put(key_3, 3u8);
@@ -362,7 +362,7 @@ fn test_layered_trie_prefix() {
         }
         if let NodeType::Hybrid((bucket, _)) = t.child(&1u8) {
             for i in 2..test_key.len() {
-                if let Some(_) = bucket.smart_get(&test_key[1..i]) {
+                if let Some(_) = bucket.coerce_get(&test_key[1..i]) {
                     expected_key.push(&test_key[..i]);
                 }
             }
@@ -388,10 +388,10 @@ fn test_layered_trie_prefix() {
 fn test_longest_prefix() {
     let key = &[1u8, 2, 3, 5, 6];
     fn test_lifetime(key: &[u8]) -> &[u8] {
-        let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
-        dvtn.put(&[1u8], 1u8);
-        dvtn.put(&[1u8, 2, 3], 2u8);
-        dvtn.put(&[1u8, 2, 3, 4], 3u8);
+        let mut dvtn: DenseVecTrieNode<[u8], u8> = DenseVecTrieNode::new();
+        dvtn.put([1u8].as_ref(), 1u8);
+        dvtn.put([1u8, 2, 3].as_ref(), 2u8);
+        dvtn.put([1u8, 2, 3, 4].as_ref(), 3u8);
         dvtn.longest_prefix(key).unwrap().0
     }
 
@@ -407,12 +407,12 @@ fn test_longest_prefix() {
 #[test]
 #[ignore]
 fn test_very_long_query() {
-    let mut dvtn: DenseVecTrieNode<u8, u8> = DenseVecTrieNode::new();
-    dvtn.put(&[1u8], 1u8);
-    dvtn.put(&[1u8, 2, 3], 2u8);
-    dvtn.put(&[1u8, 2, 3, 4], 3u8);
+    let mut dvtn: DenseVecTrieNode<[u8], u8> = DenseVecTrieNode::new();
+    dvtn.put([1u8].as_ref(), 1u8);
+    dvtn.put([1u8, 2, 3].as_ref(), 2u8);
+    dvtn.put([1u8, 2, 3, 4].as_ref(), 3u8);
 
-    let query: Vec<u8> = (1..10_000_000).map(|v| {(v % 8) as u8}).collect();
+    let query: Vec<u8> = (1..1_000_000).map(|v| {(v % 8) as u8}).collect();
     let pf: Vec<&[u8]> = dvtn.prefix(query.as_slice()).map(|(key, _)| key).collect();
     let timer = std::time::Instant::now();
     assert_eq!(pf.len(), 3);
@@ -421,9 +421,9 @@ fn test_very_long_query() {
 
 #[test]
 fn test_deep_split_spec() {
-    let mut dvtn: DenseVecTrieNode<u8, ()> = DenseVecTrieNode::with_spec(2, 512, 4096, 16384);
+    let mut dvtn: DenseVecTrieNode<[u8], ()> = DenseVecTrieNode::with_spec(2, 512, 4096, 16384);
     // let starts_with_query = &[255u8];
-    // let mut expected_starts_with = Vec::new();
+    let mut expected_starts_with = Vec::new();
     
     let mut keys: Vec<Box<[u8]>> = Vec::with_capacity(crate::htrie::BURST_THRESHOLD * 256 + 1);
     // The simplest way to have hybrid to split into two pure half is to repeatly add the node
@@ -438,9 +438,9 @@ fn test_deep_split_spec() {
                 key.push((j % 8) as u8);
                 j /= 8;
             }
-            // if pref == 255 {
-            //     expected_starts_with.push(key.clone().into_boxed_slice());
-            // }
+            if pref == 255 {
+                expected_starts_with.push(key.clone().into_boxed_slice());
+            }
             keys.push(key.into_boxed_slice());
         }
     }
